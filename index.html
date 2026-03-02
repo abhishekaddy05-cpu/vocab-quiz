@@ -3,147 +3,187 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic GRE Vocab Quiz</title>
+    <title>Ultimate GRE Vocab Quiz</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .quiz-container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 500px; text-align: center; }
-        .question { font-size: 1.4rem; font-weight: bold; margin-bottom: 1.5rem; color: #2c3e50; }
-        .options-container { display: flex; flex-direction: column; gap: 10px; }
-        button { padding: 12px; border: 2px solid #3498db; border-radius: 8px; background: white; cursor: pointer; transition: 0.2s; font-size: 1rem; }
-        button:hover:not(:disabled) { background: #3498db; color: white; }
-        button:disabled { cursor: default; }
-        #next-btn { margin-top: 1.5rem; background: #2ecc71; color: white; border: none; display: none; width: 100%; font-weight: bold; }
-        #status { margin-top: 10px; font-weight: bold; min-height: 24px; }
-        .loading { font-style: italic; color: #7f8c8d; }
+        :root {
+            --primary: #4a90e2;
+            --secondary: #2ecc71;
+            --danger: #e74c3c;
+            --dark: #2c3e50;
+            --light: #f4f7f6;
+        }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background-color: var(--light); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .quiz-container { background: white; padding: 2.5rem; border-radius: 16px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); width: 100%; max-width: 550px; text-align: center; }
+        h1 { color: var(--dark); margin-top: 0; font-size: 1.8rem; border-bottom: 2px solid var(--light); padding-bottom: 10px; }
+        .question-box { margin: 2rem 0; }
+        .word-highlight { display: block; font-size: 2.2rem; color: var(--primary); font-weight: 800; margin-bottom: 0.5rem; text-transform: capitalize; }
+        .options-grid { display: grid; gap: 12px; margin-top: 20px; }
+        button.option { padding: 15px; border: 2px solid #e0e0e0; border-radius: 10px; background: white; cursor: pointer; transition: all 0.2s ease; font-size: 1rem; text-align: left; line-height: 1.4; }
+        button.option:hover:not(:disabled) { border-color: var(--primary); background-color: #f0f7ff; transform: translateY(-2px); }
+        button.option:disabled { cursor: default; }
+        #next-btn { margin-top: 2rem; background: var(--secondary); color: white; border: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; cursor: pointer; display: none; width: 100%; font-size: 1.1rem; }
+        #status { margin-top: 15px; font-weight: bold; font-size: 1.1rem; min-height: 1.5em; }
+        .progress-bar { height: 8px; background: #eee; border-radius: 4px; margin-bottom: 20px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
+        .loading-spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div class="quiz-container">
-        <h1 id="title">GRE Vocab Challenge</h1>
-        <div id="quiz-box">
-            <p class="loading">Loading words from spreadsheet...</p>
-        </div>
-        <div id="status"></div>
-        <button id="next-btn">Next Question</button>
-        <p id="score-track" style="margin-top:20px; font-size: 0.9rem; color: #7f8c8d;"></p>
+
+<div class="quiz-container">
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <h1>GRE Word Master</h1>
+    
+    <div id="game-content">
+        <div class="loading-spinner"></div>
+        <p>Fetching words from your spreadsheet...</p>
     </div>
 
-    <script>
-        const SHEET_URL = "https://docs.google.com/spreadsheets/d/15QU1K9I19u6W2HtJp_YpILdg4cPQfm01zDDGg3kN8dg/gviz/tq?tqx=out:csv";
-        let allWords = [];
-        let currentQuizWords = [];
-        let currentIndex = 0;
-        let score = 0;
+    <div id="status"></div>
+    <button id="next-btn">Next Word →</button>
+</div>
 
-        // 1. Fetch data from Google Sheet
-        async function initQuiz() {
-            try {
-                const response = await fetch(SHEET_URL);
-                const data = await response.text();
-                const rows = data.split('\n').slice(1); // Remove header
-                
-                allWords = rows.map(row => {
-                    // Simple CSV parser for the "Word","Definition" format
-                    const parts = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-                    if (parts && parts.length >= 2) {
-                        return {
-                            word: parts[0].replace(/"/g, ''),
-                            def: parts[1].replace(/"/g, '')
-                        };
-                    }
-                    return null;
-                }).filter(item => item !== null && item.word.length > 1);
+<script>
+    // Configuration
+    const SHEET_ID = "15QU1K9I19u6W2HtJp_YpILdg4cPQfm01zDDGg3kN8dg";
+    // Using the Gviz API ensures better CSV parsing
+    const URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
 
-                startNewSession();
-            } catch (error) {
-                document.getElementById('quiz-box').innerHTML = "Failed to load words. Check your connection.";
-            }
-        }
+    let allWords = [];
+    let currentQuiz = [];
+    let currentIndex = 0;
+    let score = 0;
 
-        // 2. Pick 5 random words for this session
-        function startNewSession() {
-            score = 0;
-            currentIndex = 0;
-            currentQuizWords = [...allWords].sort(() => 0.5 - Math.random()).slice(0, 5);
-            showQuestion();
-        }
-
-        // 3. Display the question
-        function showQuestion() {
-            const currentItem = currentQuizWords[currentIndex];
-            const quizBox = document.getElementById('quiz-box');
-            const status = document.getElementById('status');
-            const nextBtn = document.getElementById('next-btn');
+    // Load data on start
+    async function loadData() {
+        try {
+            const response = await fetch(URL);
+            const text = await response.text();
             
-            status.innerText = "";
-            nextBtn.style.display = "none";
-            document.getElementById('score-track').innerText = `Question ${currentIndex + 1} of 5 | Score: ${score}`;
+            // Advanced CSV parsing to handle definitions with commas
+            const rows = text.split(/\r?\n/).slice(1); 
+            allWords = rows.map(row => {
+                // Regex to split by comma but ignore commas inside quotes
+                const matches = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+                if (matches && matches.length >= 2) {
+                    return {
+                        word: matches[0].replace(/"/g, '').trim(),
+                        def: matches[1].replace(/"/g, '').trim()
+                    };
+                }
+                return null;
+            }).filter(item => item && item.word.length > 2);
 
-            // Create distractors (3 random definitions that aren't the correct one)
-            let distractors = allWords
-                .filter(w => w.word !== currentItem.word)
-                .sort(() => 0.5 - Math.random())
-                .slice(0, 3)
-                .map(w => w.def);
-
-            let options = [...distractors, currentItem.def].sort(() => 0.5 - Math.random());
-
-            quizBox.innerHTML = `
-                <div class="question">What is the meaning of: <br><span style="color:#3498db; font-size:1.8rem;">${currentItem.word}</span></div>
-                <div class="options-container">
-                    ${options.map(opt => `<button onclick="checkAnswer(this, '${opt.replace(/'/g, "\\'")}')">${opt}</button>`).join('')}
-                </div>
+            if (allWords.length < 5) throw new Error("Not enough words found in sheet.");
+            startQuiz();
+        } catch (err) {
+            document.getElementById('game-content').innerHTML = `
+                <p style="color:red"><b>Error:</b> Could not reach the spreadsheet.</p>
+                <p style="font-size:0.8rem">Make sure the sheet is shared as "Anyone with the link can view".</p>
+                <button onclick="location.reload()" style="padding:10px">Retry</button>
             `;
         }
+    }
 
-        // 4. Handle Answer
-        window.checkAnswer = function(btn, selectedDef) {
-            const correctDef = currentQuizWords[currentIndex].def;
-            const buttons = document.querySelectorAll('.options-container button');
-            buttons.forEach(b => b.disabled = true);
+    function startQuiz() {
+        score = 0;
+        currentIndex = 0;
+        // Shuffle and pick 5
+        currentQuiz = [...allWords].sort(() => 0.5 - Math.random()).slice(0, 5);
+        renderQuestion();
+    }
 
-            if (selectedDef === correctDef) {
-                score++;
-                btn.style.background = "#2ecc71";
-                btn.style.color = "white";
-                document.getElementById('status').innerText = "Correct! 🎯";
-                document.getElementById('status').style.color = "#27ae60";
-            } else {
-                btn.style.background = "#e74c3c";
-                btn.style.color = "white";
-                document.getElementById('status').innerText = `Incorrect.`;
-                document.getElementById('status').style.color = "#c0392b";
-                
-                // Highlight the right answer subtly
-                buttons.forEach(b => {
-                    if (b.innerText === correctDef) b.style.border = "2px solid #2ecc71";
-                });
-            }
+    function renderQuestion() {
+        const item = currentQuiz[currentIndex];
+        const status = document.getElementById('status');
+        const nextBtn = document.getElementById('next-btn');
+        const content = document.getElementById('game-content');
+        
+        status.innerText = "";
+        nextBtn.style.display = "none";
+        document.getElementById('progress').style.width = `${(currentIndex / 5) * 100}%`;
 
-            document.getElementById('next-btn').style.display = "block";
-            if (currentIndex === 4) document.getElementById('next-btn').innerText = "See Results";
-        };
+        // Get 3 random WRONG definitions
+        const distractors = allWords
+            .filter(w => w.word !== item.word)
+            .sort(() => 0.5 - Math.random())
+            .slice(0, 3)
+            .map(w => w.def);
 
-        document.getElementById('next-btn').onclick = () => {
-            currentIndex++;
-            if (currentIndex < 5) {
-                showQuestion();
-            } else {
-                showFinalScore();
-            }
-        };
+        // Mix correct answer with distractors
+        const options = [...distractors, item.def].sort(() => 0.5 - Math.random());
 
-        function showFinalScore() {
-            document.getElementById('quiz-box').innerHTML = `
-                <h2>Quiz Complete!</h2>
-                <p style="font-size:1.5rem;">Final Score: <strong>${score}/5</strong></p>
-                <button onclick="startNewSession()" style="background:#3498db; color:white; width:100%;">Try 5 New Words</button>
-            `;
-            document.getElementById('next-btn').style.display = "none";
-            document.getElementById('status').innerText = "";
+        content.innerHTML = `
+            <div class="question-box">
+                <p>Which of these best defines:</p>
+                <span class="word-highlight">${item.word}</span>
+            </div>
+            <div class="options-grid">
+                ${options.map(opt => `
+                    <button class="option" onclick="handleSelect(this, '${opt.replace(/'/g, "&apos;")}')">
+                        ${opt}
+                    </button>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    window.handleSelect = function(btn, selected) {
+        const correct = currentQuiz[currentIndex].def;
+        const options = document.querySelectorAll('.option');
+        options.forEach(b => b.disabled = true);
+
+        if (selected === correct) {
+            score++;
+            btn.style.borderColor = "var(--secondary)";
+            btn.style.backgroundColor = "#e8f8f0";
+            document.getElementById('status').innerHTML = "Correct! ✨";
+            document.getElementById('status').style.color = "var(--secondary)";
+        } else {
+            btn.style.borderColor = "var(--danger)";
+            btn.style.backgroundColor = "#fdf2f2";
+            document.getElementById('status').innerHTML = `Incorrect.`;
+            document.getElementById('status').style.color = "var(--danger)";
+            
+            // Show the user which one was correct
+            options.forEach(b => {
+                if (b.innerText.trim() === correct) {
+                    b.style.borderColor = "var(--secondary)";
+                    b.style.borderWidth = "3px";
+                }
+            });
         }
 
-        initQuiz();
-    </script>
+        document.getElementById('next-btn').style.display = "block";
+        if (currentIndex === 4) document.getElementById('next-btn').innerText = "Finish & See Results";
+    };
+
+    document.getElementById('next-btn').onclick = () => {
+        currentIndex++;
+        if (currentIndex < 5) {
+            renderQuestion();
+        } else {
+            showResults();
+        }
+    };
+
+    function showResults() {
+        document.getElementById('progress').style.width = "100%";
+        const percent = (score / 5) * 100;
+        let msg = percent >= 80 ? "Vocabulary Master! 🏆" : "Keep Practicing! 📚";
+        
+        document.getElementById('game-content').innerHTML = `
+            <h2>${msg}</h2>
+            <p style="font-size: 1.2rem">You got <strong>${score}</strong> out of 5 correct.</p>
+            <button onclick="startQuiz()" style="background:var(--primary); color:white; border:none; padding:15px 30px; border-radius:8px; cursor:pointer; font-weight:bold; margin-top:10px;">Play Again with New Words</button>
+        `;
+        document.getElementById('status').innerText = "";
+        document.getElementById('next-btn').style.display = "none";
+    }
+
+    loadData();
+</script>
+
 </body>
 </html>
